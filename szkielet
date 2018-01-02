@@ -1,28 +1,3 @@
-Wprowadzenie
-  Cel i założenia pracy (geneza problemu)
-  Istniejące rozwiązania
-    Celery
-    (LOREM)
-    (LOREM)
-  Zawartość pracy
-
-Programowanie rozproszone
-  Architektura
-    Klient-serwer
-    Peer-to-peer
-  Modele obliczeń rozproszonych
-    Zcentralizowany (jeden węzeł nadzoruje pracę innych)
-    Równległy (jeden węzeł wykonuje to samo zadanie na wielu komputerach)
-
-Specyfikacja projektu
-  Architektura
-  Diagram sekwencji
-  Konfiguracja
-  Serializacja zadania
-  Uruchamianie wątku nadzorującego
-  Śledzenie zatrzymań
-  raportowanie wyników
-
 Język Haskell
   Programowanie funkcyjne
   Podstawowe cechy języka

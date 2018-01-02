@@ -16,7 +16,7 @@
 \ProvidesClass{aghdpl} 
 \DeclareOption{pdflatex}{\pdflatextrue}
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{report}} 
-\ProcessOptions\LoadClass[a4paper,twoside,openright]{report} 
+\ProcessOptions\LoadClass[a4paper,twoside, 12pt, openright]{report} 
 
 \RequirePackage{times}
 \RequirePackage[T1]{fontenc}
@@ -35,7 +35,7 @@
 \RequirePackage{enumitem}
 \RequirePackage[all,defaultlines=2]{nowidow} % Kontrola sierot i wdów - działa lepiej niż \widowpenalty i \clubpenalty
 
-\geometry{lmargin=30mm, rmargin=20mm, tmargin=30mm, bmargin=30mm, foot=10mm, head=10mm}
+\geometry{inner=30mm, outer=20mm, tmargin=20mm, bmargin=20mm, foot=10mm, head=10mm}
 \definecolor{Green}{rgb}{0.1,0.5,0.1}
 
 \def\shorttitlePL#1   {\gdef\@shorttitlePL{#1}}
@@ -51,7 +51,7 @@
 \def\degreeprogramme#1 {\gdef\@degreeprogramme{#1}}
 
 
-\linespread{1.3}
+\linespread{1.25}
 \renewcommand{\labelitemi}{--}
 
 %------------------------------------------------------------------------------

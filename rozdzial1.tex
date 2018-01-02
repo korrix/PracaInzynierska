@@ -12,6 +12,21 @@ Pomimo pozornej prostoty takiego rozwiązania istnieje bardzo niewiele narzędzi
 Celem poniższej pracy jest implementacja w języku Haskell podstawowej biblioteki do rozpraszania zadań na wielu komputerach z wykorzystaniem brokera RabbitMQ, umożliwiającą zlecanie zadań do wykonania, przerywanie zadań będących w trakcie wykonywania, raportowanie na bieżąco postępów wykonania, przesyłania wyników oraz wprowadzanie zależności pomiędzy zadaniami.
 
 %---------------------------------------------------------------------------
+\section{Istniejące rozwiązania}
+\label{sec:celePracy}
+Poniższa lista zawiera skrócony opis istniejących bibliotek programistycznych, służących do obliczeń rozproszonych:
+\subsection{Celery}
+\label{ssec:celery}
+\textbf{Celery} jest asynchroniczną kolejką zadań opartą o rozproszone komunikaty przesyłane między komputerami, napisaną w języku Python. Działa w czasie rzeczywistym, jednak umożliwia również szeregowanie zadań. Interfejs programistyczny pozwala na zlecanie zadań zarówno w sposób synchroniczny jak i asynchroniczny, oraz przesyłanie wyników. Wspiera wiele brokerów wiadomości (np. RabbitMQ, Redis, MongoDB). 
+
+\subsection{Resque}
+\label{ssec:resque}
+\textbf{Resque} jest biblioteką języka Ruby, wykorzystującą bazę Redis w charakterze brokera wiadomości. Umożliwia asynchroniczne zlecanie powtarzalnych zadań na innych komputerach. Biblioteka ta jest często używana przez programistów serwisów internetowych do wykonywania długotrwałych operacji (np. generowanie miniaturek zdjęć, rozsyłanie newslettera e-mail, tworzenie raportów, etc...) 
+
+\subsection{Cloud Haskell}
+\label{ssec:cloudHs}
+\textbf{Cloud Haskell} to biblioteka języka Haskell, udostępniająca warstwę transportową do komunikacji między węzłami, mechanizm serializacji domknięć pozwalający na zdalne uruchamianie procesów oraz API do programowania rozproszonego.
+%---------------------------------------------------------------------------
 \section{Zawartość pracy}
 \label{sec:zawartoscPracy}
 W rozdziale 1 cośtamcośtam...
