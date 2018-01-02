@@ -1,6 +1,7 @@
 % !TEX root = praca.tex
 \chapter{Język Haskell}
 \label{cha:haskell}
+Haskell to funkcyjny język programowania, którego nazwa pochodzi od imienia amerykańskiego logika Haskella Curry'ego. Posiada silny, statyczny system typów z inferencją umożliwiający wychwytywanie wielu błędów oprogramowania już na etapie kompilacji. Jest głównie wykorzystywany w kręgach akademickich ze względu na implementację wielu eksperymentalnych rozwiązań takich jak np. Leniwe wartościowanie, reprezentowanie efektów ubocznych funkcji za pomocą monad czy statyczny, parametryczny polimorfizm. 
 
 \section{Programowanie funkcyjne}
 \label{sec:architektura}
@@ -10,3 +11,11 @@
 
 \section{Opis zastosowanych bibliotek}
 \label{sec:cechyjezyka}
+\begin{description}[align=left]
+  \item [amqp] Klient brokera RabbitMQ
+  \item [bytestring] Wydajna implmentacja ciągów bajtów (niewykorzystująca list)
+  \item [configurator] Parser plików konfiguracyjnch z prostym dostępem do wartości atrybutów na podstawie nazwy
+  \item [store] Wydajna biblioteka do serializacji struktur danych
+  \item [uuid] Biblioteka dostarczająca funkcje generowania uniwersalnie unikalnych identyfikatorów
+  \item [stm] Programowa pamięć transakcyjna, umożliwiająca wygodną oraz bezpieczną synchronizację wątków
+\end{description}
