@@ -8,7 +8,11 @@ Projekt składa się z dwóch części - oprogramowania instalowanego na każdym
 
 \subsection{Oprogramowanie węzła}
 \label{ssec:taskell-node}
-Oprogramowanie węzła ma za zadanie połączyć się ze skonfigurowanym wcześniej brokerem a następnie nasłuchiwać komunikatów zlecenia lub przerwania zadania. 
+Oprogramowanie węzła ma za zadanie połączyć się ze skonfigurowanym wcześniej brokerem a następnie nasłuchiwać komunikatów zlecenia lub przerwania zadania.
+
+\subsection{Biblioteka zadań}
+\label{ssec:task-library}
+Kiedy oprogramowanie węzła otrzymuje żądanie uruchomienia zadania, musi dynamicznie w czasie działania aplikacji podjąć decyzję o tym w jaki sposób obsłużyć to zadanie. W tym celu moduł biblioteki zadań musi eksportować tablicę mieszającą zawierającą jako klucze nazwy zadań i funkcje obsługi zadania jako wartości. 
 
 \subsection{Biblioteka kliencka}
 \label{ssec:taskell-api}
@@ -43,8 +47,9 @@ taskell {
   \item [taskell.parallelism] Liczba zadań, które węzeł może przetwarzać jednocześnie
 \end{description}
 
-\section{Serializacja zadania}
-\label{sec:serializacja}
+\section{Start aplikacji}
+\label{sec:start}
+Podczas uruchamiania węzła następuje odczyt pliku konfiguracyjnego ze ścieżki podanej jako argument linii komend, 
 
 \section{Wątek nadzorujący}
 \label{sec:nadzorca}

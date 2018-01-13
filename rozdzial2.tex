@@ -1,26 +1,222 @@
 % !TEX root = praca.tex
 
-\chapter{Programowanie rozproszone}
-\label{cha:programowanieRozproszone}
-Programowanie rozproszone to styl programowania umożliwiający [TODO]
-\section{Architektura}
-\label{sec:architektura}
+\chapter{Implementacja rozpraszania zadań}
+Poniższy rozdział został poświęcony różnym aspektom implementacyjnym.
 
-\subsection{Klient-serwer}
-\label{ssec:klientSerwer}
-W tym podejściu oprogramowanie klienckie łączy się z serwerem celem pobrania danych wejściowych, a po ich przetworzeniu odsyła wyniki z powrotem
+\section{Zarządzanie zasobami}
+Protokół AMQP operuje na zależnych od siebie zasobach, którymi należy w poprawny sposób zarządzać. Postawowy przykład z dokumentacji biblioteki AMQP w przypadku wystąpienia wyjątku nie gwarantuje zwolnienia zasobu, a kolejność wykonywania finalizatorów ze względu na leniwą ewaluację jest determinowana wyłącznie wyzwoleniem mechanizmu odśmiecania.
 
-\subsection{Peer-to-peer}
-\label{ssec:peer2peer}
+\begin{lstlisting}[caption=Łączenie z RabbitMQ]
+main = do
+  conn <- openConnection "127.0.0.1" "/" "guest" "guest"
+  ...
+  closeConnection conn
+\end{lstlisting}
 
+Jednym z istniejących rozwiązań tego problemu jest biblioteka \texttt{io-region}\cite{IoReg}, umożliwiająca podział kodu na regiony odpowiedzialne za poszczególne zasoby oraz przenoszenie tych odpowiedzialności pomiędzy regionami
 
-\section{Modele obliczeń rozproszonych}
-\label{sec:modeleObl}
+\begin{lstlisting}[caption=Regionalizacja zasobów]
+...
+region $ \r -> do
+ connection <- alloc_ r (AMQP.openConnection host vhost username password)
+                         AMQP.closeConnection
+  -- po opuszczeniu regionu następuje zwolnienie zasobów
+...
+\end{lstlisting}
 
-\subsection{Zcentralizowany}
-\label{ssec:zcentralizowany}
-(jeden węzeł nadzoruje pracę innych)
+Rejestrowanie zasobów w obrębie odpowiednich regionów rozwiązuje również problem asynchronicznych wywołań zwrotnych, służących do obsługi nadchodzących komunikatów z brokera. Dla porównania, niewłaściwe rozwiązanie oparte o mechanizm \lstinline{bracket} powoduje przedwczesne zamknięcie zasobu nadal wykorzystywanego przez funkcję uruchamianą asynchronicznie.
+\newpage
+\begin{lstlisting}[caption=Problem funkcji asynchronicznych]
+...
+bracket openConnection closeConnection $ \connection ->
+  bracket (openChannel connection) closeChannel $ \channel1 ->
+    consumeMsgs channel1 queue callback -- wywołanie asynchroniczne
+  -- nieporządane zamknięcie kanału
+  -- otwarcie drugiego kanału
+  bracket (openChannel connection) closeChannel $ \channel2 ->
+    consumeMsgs channel2 queue callback -- wywołanie asynchroniczne
+    -- nieporządane zamknięcie kanału
+  _ <- getLine -- oczekiwanie
+-- zamknięcie połączenia
 
-\subsection{Równoległy}
-\label{ssec:rownolegly}
-(jeden węzeł wykonuje to samo zadanie na wielu komputerach)
+...
+region $ \r -> do
+  connection <- alloc_ r openConnection closeConnection
+  channel1 <- alloc_ r (openChannel connection) closeChannel
+  consumeMsgs channel1 queue callback
+  channel2 <- alloc_ r (openChannel connection) closeChannel
+  onsumeMsgs channel2 queue callback
+
+  _ <- getLine -- oczekiwanie
+  -- zwolnienie zasobów w poprawnej kolejności
+\end{lstlisting}
+\newpage
+
+\section{Środowisko funkcji}
+Większość funkcji związanych z protokołem AMQP wymaga do działania przekazania pewnego zasobu (jak na przykład obiekt \lstinline{Connection} lub \lstinline{Channel}). Robienie tego za każdym razem explicite prowadzi do zmniejszenia czytelności kodu. Idiomatycznym dla języka Haskell rozwiązaniem jest zastosowanie typu \lstinline{Reader} \cite{Reader}: 
+\begin{lstlisting}[caption=Typ reader]
+newtype Reader e a = Reader { runReader :: e -> a }
+
+instance Functor (Reader e) where
+  fmap f r = Reader $ \e -> f (runReader r e)
+
+instance Applicative (Reader e) where
+  pure a    = Reader $ \e -> a
+  ra <*> rb = Reader $ \e -> (runReader ra e) (runReader rb e)
+
+instance Monad (Reader e) where 
+  (Reader r) >>= f = Reader $ \e -> runReader (f (r e)) e
+
+ask :: Reader a a
+ask = Reader id
+\end{lstlisting}
+
+Typ \text{Reader} opakowuje funkcję przyjmującą jako argument środowisko jej wykonania i zwracającej pewien wynik obliczeń wykorzystujących to środowisko. Przykładowo dla:
+
+\begin{lstlisting}
+testReader :: Reader Bool String
+testReader = Reader $ \flag -> if flag then "Włącz" else "Wyłącz"
+
+runReader testReader True == "Włącz"
+\end{lstlisting}
+
+Jednak istotą działania \lstinline{Reader}'a jest jego monadyczny interfejs umożliwiający zapisanie funkcji \lstinline{testReader} jako:
+
+\begin{lstlisting}
+testReader :: Reader Bool String
+testReader = do
+  flag <- ask
+  return $ if flag then "Włącz" else "Wyłącz"
+\end{lstlisting}
+
+Dzięki temu unikamy przekazywania tego samego środowiska za każdym razem jako argumentu funkcji, co jest szczególnie istotne w przypadku kiedy jest to wiele funkcji.
+
+Niestety funkcjonalność samej monady \lstinline{Reader} reader nie jest wystarczająca ze względu na mnogość operacji wykorzystujących operacje wejścia-wyjścia, więc wymagających typu \lstinline{IO} do działania. Pomocne tutaj okazują się transformatory monad (ang. \textit{Monad transformers}\cite{Transformers}):
+
+\begin{lstlisting}[caption=Transformator typu Reader]
+newtype ReaderT e m a = ReaderT { runReaderT :: e -> m a }
+
+instance Functor m => Functor (ReaderT e m) where
+  fmap f r = ReaderT $ \e -> fmap f (runReaderT r e)
+
+instance Applicative m => Applicative (ReaderT e m) where
+  pure a    = ReaderT $ \e -> pure a
+  ra <*> rb = ReaderT $ \e -> (runReaderT ra e) <*> (runReaderT rb e)
+
+instance Monad m => Monad (ReaderT e m) where 
+  r >>= f = ReaderT $ \e -> do
+    a <- runReaderT r e
+    runReaderT (f a) e
+
+ask :: Monad m => ReaderT a m a
+ask = ReaderT return
+
+lift :: m a -> ReaderT e m a
+lift m = ReaderT (const m)
+\end{lstlisting}
+Dzięki funkcji \lstinline{lift} możemy niejako ,,podciągać'' operacje wykonane w ramach innej monady do typu \lstinline{ReaderT}:
+
+\begin{lstlisting}
+testReader :: ReaderT Bool IO String
+testReader = do
+  flag <- ask 
+  lift $ if flag then putStrLn "Włącz"
+                 else putStrLn "Wyłącz"
+  return "Wynik"
+
+> runReaderT testReader True
+Włącz
+\end{lstlisting}
+
+\newpage
+\section{Odczyt konfiguracji z pliku}
+Biblioteka \texttt{configurator}\cite{Config} TODO
+
+\section{Obsługa zadań}
+Mechanizm uruchamiania konkretnego zadania sprowadza się do odczytu odpowiedniej funkcji z tablicy mieszającej zawierającej wszystkie obsługiwane przez węzeł zadania na podstawie klucza będącego wybraną przez programistę nazwą zadania, a następnie uruchomienie (po odpowiednim sparametryzowaniu) tej funkcji wewnątrz oddzielnego wątku. Ogólny schemat wygląda następująco:
+
+\begin{lstlisting}[caption=Schemat obsługi zadania]
+newtype Task = Task { runTask :: ByteString -> IO ByteString }
+
+registeredTasks :: HashMap Text Task
+registeredTasks = fromList [ ("name1", function1)
+                           , ("name2", function2)
+                           , ("name3", function3) ]
+...
+
+handleTask (msg, env) = do
+  let Just taskName = AMQP.msgType msg
+  let      taskArgs = AMQP.msgBody msg
+
+  forkIO $
+    result <- runTask (registeredTasks ! taskName) taskArgs
+    ...
+  
+  AMQP.ackEnv env
+\end{lstlisting}
+Nieprzypadkowo typ \lstinline{Task} to opakowana, monomorficzna funkcja przetwarzająca ciągi bajtów. Gdyby pokusić się o przeniesienie odpowiedzialności za deserializację argumentów i serializację wyników obliczeń, typ ten przyjąłby pozornie ,,bezpieczniejszą'' formę egzystencjalną:
+{\large $$\forall_{a, b} (\mathrm{Serializable}\ a, \mathrm{Serializable}\ b) \Rightarrow a \rightarrow b$$}%
+jednak w takiej sytuacji kompilator nie może ustalić typów polimorficznych $a$, $b$ w kontekście fragmentu kodu obliczającego wartość:
+\newpage
+\begin{lstlisting}[caption=Problem typu zadania zdefiniowanego egzystencjalnie]
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes                #-}
+module Test where
+
+import Data.Store
+import Data.Text
+import Data.ByteString
+import Data.HashMap.Strict
+
+newtype Task = Task { runTask :: forall a b . (Store a, Store b) 
+                              => a -> IO b }
+
+registeredTasks :: HashMap Text Task
+registeredTasks = ...
+
+runTaskByName :: Text -> ByteString -> IO ByteString
+runTaskByName taskName encodedArg = do
+  arg <- decodeIO encodedArg
+  result <- runTask (registeredTasks ! taskName) arg
+  -- Błąd sprawdzania jednoznaczności typów
+  return $ encode result
+  
+\end{lstlisting}
+
+Błąd ten jest analogiczny do przedstawionego poniżej bardziej podstawowego przykładu i wychwytuje go mechanizm sprawdzania jednoznaczności instancjonowanych typów:
+\begin{lstlisting}
+show (read "5" :: Int)         => "5"
+show (read "5" :: Double)      => "5.0"
+show (read "5") => Ambiguous type variable `a2' arising from a use of `read'
+                   prevents the constraint `(Read a2)' from being solved.
+\end{lstlisting}
+
+Inferencja typu dla trzeciego wyrażenia przebiega w systemie Hindleya-Milnera\cite{HM} rozszerzonym o klasy typów\cite{TC} następująco:
+\begin{figure}[h]
+\scriptsize 
+\begin{mdframed}
+\begin{prooftree}
+  \AxiomC{$\mathrm{show} : \forall \alpha.\ (\mathrm{Show}\ \alpha).\ \alpha \rightarrow \mathrm{String} \in \Gamma$}
+  \RightLabel{$\left[\text{Var}\right]$}
+  \UnaryInfC{$\Gamma \vdash \mathrm{show} : \forall \alpha.\ (\mathrm{Show}\ \alpha).\ \alpha \rightarrow \mathrm{String}$}
+ 
+  \AxiomC{$\mathrm{\langle 5\rangle} : \mathrm{String} \in \Gamma$}
+  \RightLabel{$[\text{Var}]$}
+  \UnaryInfC{$\Gamma \vdash \mathrm{\langle 5\rangle} : \mathrm{String}$}
+  
+  \AxiomC{$\mathrm{read} : \forall \alpha.\ (\mathrm{Read}\ \alpha).\ \mathrm{String} \rightarrow \alpha \in \Gamma$}
+  \RightLabel{$\left[\text{Var}\right]$}
+  \UnaryInfC{$\Gamma \vdash \mathrm{read} : \forall \alpha.\ (\mathrm{Read}\ \alpha).\ \mathrm{String} \rightarrow \alpha$}
+  
+  \RightLabel{$[\text{App}]$}
+  \BinaryInfC{$\mathrm{read\ \langle 5\rangle} : \forall \alpha.\ (\mathrm{Read}\ \alpha). \alpha $}
+
+  \RightLabel{$[\text{Comb}]$}
+  \BinaryInfC{$\mathrm{show \big(read\ \langle 5\rangle\big)} : \forall \alpha.\ (\mathrm{Read}\ \alpha, \mathrm{Show}\ \alpha).\ \mathrm{String}$}
+\end{prooftree}
+\end{mdframed}
+\caption{Inferencja niejednoznacznego typu}
+\end{figure}
+
+Wynikowy typ zawiera restrykcje odnoszące się do zmiennej $\alpha$ niewystępującej poza kontekstem, więc wyrażenie takie nie posiada prawidłowego typu\cite{Report}.
+% Skoro jest jeden result to kolejka może się usuwać jeśli nikt jej nie słucha, doczytać

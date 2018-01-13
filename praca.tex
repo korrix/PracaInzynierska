@@ -7,12 +7,14 @@
 \usepackage{amsfonts}
 \usepackage{amsmath}
 \usepackage{amsthm}
-
+\usepackage{bussproofs}
+\usepackage{mdframed}
 % --- < bibliografia > ---
 
 \usepackage[
 style=numeric,
 sorting=none,
+block=ragged,
 %
 % Zastosuj styl wpisu bibliograficznego właściwy językowi publikacji.
 language=autobib,
@@ -29,7 +31,7 @@ url=false,
 % Ustawienia związane z polskimi normami dla bibliografii.
 maxbibnames=3,
 % Jeżeli używamy BibTeXa:
-backend=bibtex
+backend=biber
 ]{biblatex}
 
 \usepackage{csquotes}
@@ -49,9 +51,20 @@ backend=bibtex
 \usepackage{courier}
 
 \usepackage{listings}
-\lstloadlanguages{TeX}
-
+\lstloadlanguages{Haskell}
+\definecolor{mygray}{gray}{0.5}
 \lstset{
+  frame=shadowbox,
+  aboveskip=\parindent,
+  belowskip=\parindent,
+  belowcaptionskip=-1em,
+  numbers=left,
+  numberstyle=\scriptsize\ttfamily\color{mygray},
+  rulesepcolor=\color{mygray},
+  stepnumber=1,
+  framesep=5pt,
+  language=Haskell,
+  captionpos=b,
 	literate={ą}{{\k{a}}}1
            {ć}{{\'c}}1
            {ę}{{\k{e}}}1
@@ -141,13 +154,11 @@ backend=bibtex
 
 \setcounter{tocdepth}{2}
 \tableofcontents
+\renewcommand\lstlistlistingname{Listingi kodu}
+\lstlistoflistings
 \clearpage
 \include{rozdzial1}
 \include{rozdzial2}
-\include{rozdzial3}
-\include{rozdzial4}
-\include{rozdzial5}
-\include{rozdzial6}
 
 
 % itd.
@@ -155,7 +166,6 @@ backend=bibtex
 % \include{dodatekA}
 % \include{dodatekB}
 % itd.
-
 \printbibliography
 
 \end{document}
