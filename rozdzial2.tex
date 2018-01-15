@@ -130,8 +130,40 @@ Włącz
 
 \newpage
 \section{Odczyt konfiguracji z pliku}
-Biblioteka \texttt{configurator}\cite{Config} TODO
+Biblioteka \texttt{configurator}\cite{Conf} umożliwia odczyt plików konfiguracyjnych i zapewnia uproszczony interfejs dostępu do przechowywanych wewnątrz wartości parametrów, a w przypadku ich braku korzysta z wartości domyślnej zapisanej ,,na sztywno'' w kodze konfigurowanego programu:
+\begin{lstlisting}[caption=Przykładowy plik konfiguracyjny]
+taskell {
+  rabbitmq {
+    host     = "localhost"
+    vhost    = "/"
+    username = "guest"
+    password = "guest"
+  }
+  abortExchange = "taskell.abort"
+  parallelism = 1
+  queues = ["taskell.q1", "taskell.q2"]
+}
+\end{lstlisting}
 
+\begin{description}[align=right,labelwidth=10cm,leftmargin=6cm]
+  \item[taskell.rabbitmq.host] Nazwa sieciowa lub adres IP brokera
+  \item[taskell.rabbitmq.vhost] URL hosta wirtualnego jeśli na fizycznej maszynie działa więcej niż jeden broker
+  \item[taskell.rabbitmq.username] Nazwa użytkownika skonfigurowana na brokerze
+  \item[taskell.rabbitmq.password] Hasło użytkownika skonfigurowana na brokerze
+  \item[taskell.abortExchange] Nazwa wymiennika do którego każdy węzeł przypina swoją kolejkę celem nasłuchu zleceń przerwania zadana
+  \item[taskell.queues] Lista kolejek, które węzeł ma nasłuchiwać w oczekiwaniu na zadanie
+  \item[taskell.parallelism] Liczba zadań, które węzeł może przetwarzać jednocześnie
+\end{description}
+\begin{lstlisting}[caption=Odczyt konfiguracji]
+main = do
+  [cp] <- getArgs
+  config <- load [ Required cp ]
+  host     <- lookupDefault "localhost" config "taskell.rabbitmq.host"
+  vhost    <- lookupDefault "//"        config "taskell.rabbitmq.vhost"
+  username <- lookupDefault "guest"     config "taskell.rabbitmq.username"
+  password <- lookupDefault "password"  config "taskell.rabbitmq.password"
+\end{lstlisting}
+\newpage
 \section{Obsługa zadań}
 Mechanizm uruchamiania konkretnego zadania sprowadza się do odczytu odpowiedniej funkcji z tablicy mieszającej zawierającej wszystkie obsługiwane przez węzeł zadania na podstawie klucza będącego wybraną przez programistę nazwą zadania, a następnie uruchomienie (po odpowiednim sparametryzowaniu) tej funkcji wewnątrz oddzielnego wątku. Ogólny schemat wygląda następująco:
 
