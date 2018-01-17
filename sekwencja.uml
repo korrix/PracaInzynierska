@@ -1,0 +1,56 @@
+@startuml
+skinparam monochrome true
+
+participant Klient
+participant Broker
+participant Węzeł
+participant Wynik 
+participant Postęp
+participant Wątek
+
+activate Klient 
+Klient -> Broker: **zadanie(argument)**
+deactivate Klient
+Broker -> Węzeł: **zadanie(argument)**
+activate Węzeł
+Węzeł -> Wątek: **forkIO**
+deactivate Węzeł
+group Praca
+  activate Wątek
+  Wątek -> Postęp: postępy
+  deactivate Wątek
+  activate Postęp
+  Postęp -->> Wątek
+  activate Wątek
+  Postęp -> Węzeł: postępy
+  activate Węzeł
+    Węzeł -->> Postęp
+  deactivate Postęp
+  Węzeł -> Broker: postępy
+  deactivate Węzeł
+  activate Broker
+  Broker -> Klient: postępy
+  deactivate Broker
+  activate Klient
+  deactivate Klient
+end
+deactivate Klient 
+activate Postęp
+destroy Postęp
+Wątek -> Wynik: wynik
+destroy Wątek
+activate Wynik
+Wynik -> Węzeł: wynik
+activate Węzeł
+Węzeł -->> Wynik
+destroy Wynik
+Węzeł -> Broker: wynik
+activate Broker
+Węzeł -->> Broker: Ack
+deactivate Węzeł
+
+Broker -> Klient: wynik
+deactivate Broker
+activate Klient
+...
+@enduml

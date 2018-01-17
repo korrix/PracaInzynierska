@@ -149,7 +149,7 @@ taskell {
   \item[taskell.rabbitmq.host] Nazwa sieciowa lub adres IP brokera
   \item[taskell.rabbitmq.vhost] URL hosta wirtualnego jeśli na fizycznej maszynie działa więcej niż jeden broker
   \item[taskell.rabbitmq.username] Nazwa użytkownika skonfigurowana na brokerze
-  \item[taskell.rabbitmq.password] Hasło użytkownika skonfigurowana na brokerze
+  \item[taskell.rabbitmq.password] Hasło użytkownika skonfigurowane na brokerze
   \item[taskell.abortExchange] Nazwa wymiennika do którego każdy węzeł przypina swoją kolejkę celem nasłuchu zleceń przerwania zadana
   \item[taskell.queues] Lista kolejek, które węzeł ma nasłuchiwać w oczekiwaniu na zadanie
   \item[taskell.parallelism] Liczba zadań, które węzeł może przetwarzać jednocześnie
@@ -251,4 +251,86 @@ Inferencja typu dla trzeciego wyrażenia przebiega w systemie Hindleya-Milnera\c
 \end{figure}
 
 Wynikowy typ zawiera restrykcje odnoszące się do zmiennej $\alpha$ niewystępującej poza kontekstem, więc wyrażenie takie nie posiada prawidłowego typu\cite{Report}.
-% Skoro jest jeden result to kolejka może się usuwać jeśli nikt jej nie słucha, doczytać
+
+\section{Raportowanie postępów wykonania}
+Każde zadanie oprócz zwracania rezultatu może również raportować na bieżąco postęp wykonywanych operacji. Skuteczną metodą obsługi tego mechanizmu są współprogramy (ang. \textit{coroutines}). Biblioteka \texttt{monad-coroutine}\cite{Coroutine} dostarcza spójny i idiomatyczny interfejs pozwalający na zaimplementowanie tej funkcjonalności:
+
+\begin{lstlisting}[caption=Ostateczna implementacja zadania]
+newtype Task arg p r = Task { runTask :: arg -> Coroutine (Yield p) IO r }
+  
+instance Functor (Task arg p) where
+  fmap f (Task t) = Task $ \arg -> fmap f (t arg)
+  
+instance Applicative (Task arg p) where
+  pure t = Task $ \_ -> pure t
+  Task t1 <*> Task t2 = Task $ \arg -> t1 arg <*> t2 arg
+  
+instance Monad (Task arg p) where
+  (Task t) >>= f = Task $ \arg -> do
+    t' <- t arg
+    runTask (f t') arg 
+  
+type TaskStore = HashMap Text RawTask
+
+runTaskByName :: MonadIO m => TaskStore -> Text 
+              -> ByteString           -- Zserializowany argument zadania
+              -> (ByteString -> IO a) -- Domknięcie raportujące postępy
+              -> m ByteString         -- Wynik zadania
+runTaskByName ts key arg reportFn = liftIO $ do
+  let producer = runTask (ts ! key) arg
+  pogoStick (\(Yield x cont) -> lift (reportFn x) >> cont) producer
+
+progress :: Monad m => p -> Coroutine (Yield p) m ()
+progress = yield
+\end{lstlisting}
+
+Przykładowe zadanie sumujące liczby i raportujące postęp po przetworzeniu każdego elementu listy wygląda wtedy następująco:
+\begin{lstlisting}
+summationTask :: Task [Int] Int Int
+summationTask = Task $ \numbers -> 
+  let indexedNumbers = zip numbers [1..]
+      count = fromIntegral $ length numbers
+      sumf acc (a, nr) = do
+      progress $ floor $ (fromIntegral nr / count) * 100
+      return $ acc + a
+  in foldM sumf 0 indexedNumbers
+\end{lstlisting}
+
+\section{Synchronizacja wewnątrzprocesowa}
+TODO
+
+\section{Schemat komunikacji z brokerem}
+Zadania są definiowane przez użytkownika, a więc rozsądnym wydaje się odizolowanie wykonywanego kodu w oddzielnym wątku, tak aby ograniczyć opóźnienia komunikacyjne. Poniższy diagram sekwencji obrazuje proces zachodzący podczas wykonywania przykładowego zadania, przy założeniu, że całość komunikacji odbywa się poprzez transakcyjne zmienne synchronizacyjne:
+
+\begin{figure}[h]
+\includegraphics[width=\textwidth]{sekwencja}
+\caption{Diagram sekwencji wynonywania zadania}
+\end{figure}
+
+Kiedy postępy są zapisywane w zmiennej transakcyjnej, wykonanie wątku jest przerywane tylko na czas tego konkretnego zapisu, a przesył postępów odbywa się w innym wątku. Takie podejście minimalizuje przestoje, przy założeniu, że wysyłanie oczekujących komunikatów odbywa się szybciej niż produkcja nowych (W przeciwnym wypadku następuje blokowanie przy próbie zapisu do zmiennej, z której inny wątek nie zdążył jeszcze pobrać wartości). Obsługa przesyłania rezultatu zadania jest identyczna z obsługą postępów, co w przyszłości umożliwia zaimplementowanie zadań produkujących więcej niż jeden wynik. 
+
+Zatwierdzenie odebrania zadania odbywa się dopiero po odesłaniu wyniku, co pozwala na wykorzystanie wbudowanego w RabbitMQ mechanizmu automatycznego ponownego kolejkowania niedokończonych zadań, na wypadek np. fizycznej awarii węzła.
+
+\section{Przerywanie zadań}
+Przerywanie zadań jest obsługiwane poprzez zapamiętanie identyfikatora wątku zadania w transakcyjnej mapie\cite{STMMap}, gdzie kluczami są identyfikatory aktualnie wykonywanych zadań, a wartościami identyfikatory wątku obsługującego zadanie. Komunikat przerwania zadania zawiera identyfikator zadania, które ma zostać przerwane, co umożliwia przerwanie odpowiedniego wątku:
+\begin{lstlisting}
+type CurrentTasks = STM.Map UUID ThreadId
+
+abortHandler :: CurrentTasks -> ReaderT (Env (Message, Envelope)) IO ()
+abortHandler currentTasks = do
+  Env r log (msg, env) <- ask
+  deferAck r env
+
+  let Just taskId = fromASCIIBytes $ BL.toStrict (msgBody msg)
+  log $ "Got abort for task " <> toText taskId
+
+  let strategy k = return (k, STM.Focus.Remove)
+  abortCurrent <- atomically $ STM.focus strategy taskId currentTasks
+  case abortCurrent of
+    Just threadId -> do
+        liftIO $ killThread threadId
+        log "Abort received, thread killed"
+    Nothing -> log "Not my task, skipping"
+\end{lstlisting}
+
+\section{Klient}
