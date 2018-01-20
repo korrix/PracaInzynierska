@@ -1,0 +1,38 @@
+digraph R {
+  rankdir=LR
+  graph [splines=line]
+
+  klient [shape=Mcircle, label="Klient"]
+  kolejka1 [shape=record, label="{ | | | | }"]
+  kolejka2 [shape=record, label="{ | | | | }"]
+  kolejka3 [shape=record, label="{ | | | | }"]
+
+  kolejkaw1 [shape=record, label="{ | }"]
+  kolejkaw2 [shape=record, label="{ | }"]
+
+  proxy [shape=point]
+
+  węzeł1 [shape=Msquare]
+  węzeł2 [shape=Msquare]
+
+  klient -> proxy [label=Zadania]
+
+  proxy:e -> kolejka1:w
+  proxy:e -> kolejka2:w
+  proxy:e -> kolejka3:w
+
+  kolejka1:e -> węzeł1:w
+
+  kolejka1:e -> węzeł2:w
+  kolejka2:e -> węzeł2:w
+  kolejka3:e -> węzeł2:w
+
+  węzeł1:e -> kolejkaw1:w [dir=back]
+  węzeł2:e -> kolejkaw2:w [dir=back]
+
+  exchange [shape=octagon, label="Wymiennik"]
+
+  kolejkaw2:e -> exchange:w [dir=back]
+  kolejkaw1:e -> exchange:w [dir=back]
+
+}

@@ -9,12 +9,16 @@
 \usepackage{amsthm}
 \usepackage{bussproofs}
 \usepackage{mdframed}
+\usepackage[final]{microtype}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, shapes.multipart, positioning}
 % --- < bibliografia > ---
 
 \usepackage[
 style=numeric,
 sorting=none,
-block=ragged,
+block=space,
 %
 % Zastosuj styl wpisu bibliograficznego właściwy językowi publikacji.
 language=autobib,
@@ -124,7 +128,7 @@ backend=biber
 
 \degreeprogramme{Informatyka}
 
-\date{2017}
+\date{2018}
 
 \department{Katedra Informatyki Stosowanej}
 
@@ -161,7 +165,7 @@ backend=biber
 \clearpage
 \include{rozdzial1}
 \include{rozdzial2}
-
+\include{rozdzial3}
 
 % itd.
 % \appendix

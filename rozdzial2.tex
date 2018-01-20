@@ -1,7 +1,25 @@
 % !TEX root = praca.tex
 
 \chapter{Implementacja rozpraszania zadań}
-Poniższy rozdział został poświęcony różnym aspektom implementacyjnym.
+Poniższy rozdział został poświęcony szczególnie istotnym aspektom implementacyjnym biblioteki umożliwiającej uruchamianie zadań na wielu różnych komputerach w języku Haskell, ze szczególnym uwzględnieniem dodatkowych bibliotek i rozszerzeń tego języka.
+
+\section{Broker RabbitMQ}
+\textbf{RabbitMQ} to otwartoźródłowy broker wiadomości - oprogramowanie zapewniające odporny na zakłócenia mechanizm komunikacji sieciowej. Został zaimplementowany w języku Erlang z wykorzystaniem Open Telecom Platform. Posiada biblioteki dla wszystkich znaczących języków programowania - w tym dla Haskella (biblioteka amqp - od ang. Advanced Message Queuing Protocol). Dwie najważniejsze koncepcje implementowane przez RabbitMQ to - \textbf{kolejki} (ang. queues) oraz \textbf{wymienniki} (ang. exchanges). Kolejki to przetrzymywane przez serwer struktury FIFO z sieciowym protokołem dostępu. Są najbardziej podstawową abstrakcją stosowaną w rozproszonym programowaniu współbieżnym, a w przypadku projektu będącego przedmiotem tej pracy pozwalają wielu węzłom ''konkurować'' o zadania w bezpieczny sposób (nigdy nie dojdzie do sytuacji, w której dwa zadania są w tym samym czasie wykonywane na dwóch różnych węzłach). Wymienniki są pośrednikami dostępu do zbiorów kolejek - wiadomość, która zostanie dodana do wymiennika może zostać powielona i rozdystrybuowana do połączonych z wymiennikiem kolejek w jeden z czterech możliwych sposobów zależnie od predefiniowanego typu wymiennika:
+\begin{description}[align=right,labelwidth=3cm,leftmargin=3cm]
+  \item [direct] wiadomość trafia tylko do kolejek z określonym kluczem routującym, identycznym z kluczem zawartym w nagłówku wiadomości
+  \item [fanout] wiadomość trafia do wszystkich podłączonych kolejek
+  \item [topic] wiadomość trafia do konkretnej kolejki tylko wtedy, kiedy jej klucz routujący spełnia wzorzec określony dla tej kolejki 
+  \item [headers] wiadomość trafia do konkretnej kolejki na podstawie innych niż klucz routujący parametrów zawartych w nagłówku
+\end{description}
+
+Topologia wykorzystywana w projekcie zakłada, że każdy węzeł może nasłuchiwać więcej niż jednej kolejki zadaniowej (jest to porządane w przypadku kiedy nie każdy węzeł jest w~stanie obsłużyć każdy typ zadania). Dodatkowo każdy węzeł tworzy własną kolejkę na zlecenia przerwania zadania i przypina ją do wspólnego wymiennika typu \lstinline{fanout}. Gwarantuje to dostarczenie każdemu węzłowi komunikatu przerwania niezależnie od awarii komunikacji z brokerem: 
+
+\begin{figure}
+\resizebox{\textwidth}{!}{%
+\input{komunikacja.tikz}
+}%
+\caption{Topologia kolejkowania}
+\end{figure}
 
 \section{Zarządzanie zasobami}
 Protokół AMQP operuje na zależnych od siebie zasobach, którymi należy w poprawny sposób zarządzać. Postawowy przykład z dokumentacji biblioteki AMQP w przypadku wystąpienia wyjątku nie gwarantuje zwolnienia zasobu, a kolejność wykonywania finalizatorów ze względu na leniwą ewaluację jest determinowana wyłącznie wyzwoleniem mechanizmu odśmiecania.
@@ -14,7 +32,7 @@ main = do
 \end{lstlisting}
 
 Jednym z istniejących rozwiązań tego problemu jest biblioteka \texttt{io-region}\cite{IoReg}, umożliwiająca podział kodu na regiony odpowiedzialne za poszczególne zasoby oraz przenoszenie tych odpowiedzialności pomiędzy regionami
-
+\newpage
 \begin{lstlisting}[caption=Regionalizacja zasobów]
 ...
 region $ \r -> do
@@ -25,7 +43,6 @@ region $ \r -> do
 \end{lstlisting}
 
 Rejestrowanie zasobów w obrębie odpowiednich regionów rozwiązuje również problem asynchronicznych wywołań zwrotnych, służących do obsługi nadchodzących komunikatów z brokera. Dla porównania, niewłaściwe rozwiązanie oparte o mechanizm \lstinline{bracket} powoduje przedwczesne zamknięcie zasobu nadal wykorzystywanego przez funkcję uruchamianą asynchronicznie.
-\newpage
 \begin{lstlisting}[caption=Problem funkcji asynchronicznych]
 ...
 bracket openConnection closeConnection $ \connection ->
@@ -296,11 +313,8 @@ summationTask = Task $ \numbers ->
   in foldM sumf 0 indexedNumbers
 \end{lstlisting}
 
-\section{Synchronizacja wewnątrzprocesowa}
-TODO
-
 \section{Schemat komunikacji z brokerem}
-Zadania są definiowane przez użytkownika, a więc rozsądnym wydaje się odizolowanie wykonywanego kodu w oddzielnym wątku, tak aby ograniczyć opóźnienia komunikacyjne. Poniższy diagram sekwencji obrazuje proces zachodzący podczas wykonywania przykładowego zadania, przy założeniu, że całość komunikacji odbywa się poprzez transakcyjne zmienne synchronizacyjne:
+Zadania są definiowane przez użytkownika, a więc rozsądnym wydaje się odizolowanie wykonywanego kodu w oddzielnym wątku, tak aby ograniczyć opóźnienia komunikacyjne. Poniższy diagram sekwencji obrazuje proces zachodzący podczas wykonywania przykładowego zadania, przy założeniu, że całość komunikacji odbywa się poprzez transakcyjne zmienne synchronizacyjne\cite{Stm}:
 
 \begin{figure}[h]
 \includegraphics[width=\textwidth]{sekwencja}
@@ -312,7 +326,7 @@ Kiedy postępy są zapisywane w zmiennej transakcyjnej, wykonanie wątku jest pr
 Zatwierdzenie odebrania zadania odbywa się dopiero po odesłaniu wyniku, co pozwala na wykorzystanie wbudowanego w RabbitMQ mechanizmu automatycznego ponownego kolejkowania niedokończonych zadań, na wypadek np. fizycznej awarii węzła.
 
 \section{Przerywanie zadań}
-Przerywanie zadań jest obsługiwane poprzez zapamiętanie identyfikatora wątku zadania w transakcyjnej mapie\cite{STMMap}, gdzie kluczami są identyfikatory aktualnie wykonywanych zadań, a wartościami identyfikatory wątku obsługującego zadanie. Komunikat przerwania zadania zawiera identyfikator zadania, które ma zostać przerwane, co umożliwia przerwanie odpowiedniego wątku:
+Przerywanie zadań jest obsługiwane poprzez zapamiętanie identyfikatora wątku zadania w transakcyjnej mapie\cite{STMMap}, gdzie kluczami są identyfikatory aktualnie wykonywanych zadań, a wartościami identyfikatory wątku obsługującego zadanie. Komunikat przerprawania zadania zawiera identyfikator zadania, które ma zostać przerwane, co umożliwia przerwanie odpowiedniego wątku:
 \begin{lstlisting}
 type CurrentTasks = STM.Map UUID ThreadId
 
@@ -332,5 +346,62 @@ abortHandler currentTasks = do
         log "Abort received, thread killed"
     Nothing -> log "Not my task, skipping"
 \end{lstlisting}
-
+\newpage
 \section{Klient}
+Uruchamianie zadań jest możliwe za pomocą funkcji \lstinline{enqueueTask}, a oczekiwanie na wyniki i postępy umożliwiają odpowiednio funkcje \lstinline{onResult} oraz \lstinline{onProgress} zdefiniowane następująco:
+
+\begin{lstlisting}[caption=Klient uruchamiający zadania]
+enqueueTask :: (MonadIO m, MonadReader (Env Channel) m) 
+            => T.Text -> T.Text -> BL.ByteString -> m UUID
+enqueueTask qname taskName taskArgs = do
+  taskId <- liftIO nextRandom
+  queue newQueue { queueName = qname, queueDurable = False
+                 , queueExclusive = True} $ do
+    publish newMsg { msgBody = taskArgs
+                    , msgID = Just $ toText taskId
+                    , msgType = Just taskName
+                    , msgDeliveryMode = Just Persistent }
+  return taskId
+
+onSuffix :: (MonadIO m, MonadReader (Env Channel) m) 
+         => T.Text -> UUID -> (BL.ByteString -> ReaderT (Env Channel) IO ()) 
+         -> m () 
+onSuffix suffix taskId callback = do
+  env <- ask
+  queue newQueue { queueName = toText taskId <> suffix
+                 , queueAutoDelete = True} $
+    subscribe Ack $ do
+      Env r _ (msg, envelope) <- ask
+      deferAck r envelope
+      liftIO $ runReaderT (callback $ msgBody msg) env
+  return ()
+
+onProgress = onSuffix ".progress"
+onResult = onSuffix ".result"
+
+\end{lstlisting}
+
+Uruchomienie zadania polega na umieszczeniu na wybranej przez użytkownika kolejce komunikatu zlecającego zadanie, którego nasłuchują węzły. Kiedy węzeł odeśle postęp, lub rezultat, możliwe jest zlecenie kolejnego zadania, w szczególności wykorzystującego rezultat poprzedniego jako swój argument. Dzięki niskopoziomowemu interfejsowi możemy wykorzystywać wiele różnych strategii serializacji i deserializacji przesyłanych danych oraz eliminować ich izomorficzne przekształcenia (niepotrzebne transformacje danych będących w odpowiednich formatach). Kosztem takiego rozwiązania jest brak bezpieczeństwa typów.
+\newpage
+\begin{lstlisting}
+{-# LANGUAGE ViewPatterns #-}
+
+deserialize :: Store a => BL.ByteString -> a
+deserialize = decodeEx . BL.toStrict
+
+serialize :: Store a => a -> BL.ByteString
+serialize = BL.fromStrict . encode
+
+printL :: (MonadIO m, Show a) => a -> m ()
+printL = liftIO . print
+
+main :: IO ()
+main = logger defaultLoger $ connection "localhost" "/" "guest" "guest" $ do
+  channel "task" $ do
+    task1 <- enqueueTask "taskell.q1" "additionTask" 
+                               $ serialize (1 :: Int, 2 :: Int)
+    task1 `onProgress` \(deserialize -> p) -> printL (p :: Int)
+    task1 `onResult` \r -> do
+      task2 <-  enqueueTask "taskell.q1" "dummyTask" r
+      task2 `onResult` \(deserialize -> p) -> printL (p :: Int)
+\end{lstlisting}
