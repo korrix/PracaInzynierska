@@ -1,2 +1,35 @@
 % !TEX root = praca.tex
 \chapter{Podsumowanie}
+\label{chap:pods}
+W ramach niniejszej pracy została zrealizowana praktyczna implementacja biblioteki umożliwiającej rozpraszanie zadań na wielu komputerach (Rozdział \ref{chap:impl}), ich nadzorowanie, przerywanie (Sekcja \ref{sec:przer}), a także raportowanie w czasie rzeczywistym postępów (Sekcja \ref{sec:rap}). W ten sposób zostały osiągnięte główne cele pracy.
+
+Rozpraszanie zadań jest niezmiernie złożonym zagadnieniem, a jego odpowiednie ujęcie w kontekście architektury oprogramowania to wyzwanie, z którym każdy programista mierzy się niejednokrotnie w swojej karierze. Języki funkcyjne pozwalają na opisywanie tych zagadnień za pomocą różnorodnych abstrakcji matematycznych, dających nieznane dotąd możliwości analizy struktury programów rozproszonych.
+
+\section{Możliwe dalsze kierunki rozwoju}
+Zakres tej pracy pozwolił na zaimplementowanie funkcjonalnej, jednak ograniczonej z punktu widzenia użytkownika końcowego biblioteki. Podczas jej powstawiania zostały zidentyfikowane następujące obszary, które można usprawnić:
+\subsection*{Konfiguracja}
+W obecnej implementacji każdorazowa edycja pliku konfiguracyjnego wymaga restartowania całego modułu obsługi zadań na węźle. Biblioteka \lstinline{configurator} posiada wbudowany mechanizm powiadamiający o zmianach, jednak nie jest on obecnie wykorzystywany.
+
+Ponadto w obecnej wersji nie jest przeprowadzana weryfikacja poprawności konfiguracji, co przekłada się na trudniejsze wychwytywanie nawet najprostszych błędów.
+
+\subsection*{Obsługa błędów}
+Jednym z większych wyzwań architektonicznych jest obsługa błędnych ścieżek wykonania oraz sytuacji nadzwyczajnych (wyjątków). W wielowątkowym, rozproszonym środowisku jest to szczególnie trudne, ponieważ błędy mogą występować w bardzo wielu, często asynchronicznych scenariuszach. Dodatkowo język Haskell nie posiada pojedynczego, ustandaryzowanego mechanizmu ich obsługi co czyni poprawną implementację szczególnie trudną.
+
+\subsection*{Bezpieczeństwo typów}
+Kiedy język Haskell zyska pełny system typów zależnych, będzie możliwe zapisanie typu zadania w sposób umożliwiający automatyczną inferencję sposobu serializacji danych, oraz wychwytujący błędy typów w kodzie klienta (jednak w dalszym ciągu nie będzie możliwe sprawdzanie spójności typów między kodem modułu zadań a klientem, ponieważ są to moduły zupełnie od siebie niezależne).
+
+\subsection*{Obsługa zadań interaktywnych}
+Obecnie kod zadania jest uruchamiany za każdym razem, kiedy zadanie zostaje zlecone, oraz odpowiada pojedynczym wynikiem po zakończeniu pracy. Przy wykorzystaniu współprogramów jest jednak możliwa implementacja zadań, które po uruchomieniu oczekują serii argumentów i dla każdego kolejnego argumentu produkują nowy wynik, nie kończąc swojej pracy.
+
+\subsection*{Serializacja domknięć oraz dynamiczne ładowanie kodu}
+Aby uruchomić kod zadania, w obecnej wersji musi ono zostać umieszczone w odpowiednim module, statycznie konsolidowanym wraz z modułem węzła. Takie podejście gwarantuje bezpieczeństwo binarnej kompatybilności, jednak powoduje znaczną komplikację wdrażania poprawek w przypadku architektury składającej się z wielu węzłów. 
+
+Za pomocą mechanizmu serializacji domknięć możliwe byłoby zdalne uruchamianie funkcji zdefiniowanych po stronie klienta. Projekt \lstinline{Cloud Haskell} posiada mechanizm serializacji domknięć, jednak jego implementacja jest jeszcze w fazie rozwojowej.
+
+Mechanizm dynamicznego ładowania kodu umożliwiałby łatwą aktualizację oprogramowania węzłów i może zostać zaimplementowany z wykorzystaniem API trybu interaktywnego \lstinline{GHCi}.
+
+\subsection*{Topologia zadań na poziomie brokera}
+Istniejąca implementacja pozwala na wprowadzanie zależności między zadaniami, jednak za każdym razem wyniki i argumenty są przesyłane do klienta, pełniącego centralną rolę. Wspomniany wcześniej mechanizm zadań interaktywnych, po odpowiednim rozszerzeniu pozwalałby zadaniu pobierać argumenty bezpośrednio z kolejki, do której produkuje wyniki inne zadanie.
+
+\subsection*{Inne funkcjonalności}
+Biblioteki do rozpraszania zadań posiadają bardzo wiele unikalnych rozwiązań, które z powodzeniem można przenieść na grunt języków funkcyjnych i rozszerzyć wykorzystując abstrakcje i idiomy, istniejące jedynie w tych językach - pozwalając na jeszcze wydajniejsze i bardziej przyjazne dla programistów tworzenie oprogramowania rozproszonego.

@@ -1,6 +1,7 @@
 % !TEX root = praca.tex
 
 \chapter{Implementacja rozpraszania zadań}
+\label{chap:impl}
 Poniższy rozdział został poświęcony szczególnie istotnym aspektom implementacyjnym biblioteki umożliwiającej uruchamianie zadań na wielu różnych komputerach w języku Haskell, ze szczególnym uwzględnieniem dodatkowych bibliotek i rozszerzeń tego języka.
 
 \section{Broker RabbitMQ}
@@ -12,28 +13,28 @@ Poniższy rozdział został poświęcony szczególnie istotnym aspektom implemen
   \item [headers] wiadomość trafia do konkretnej kolejki na podstawie innych niż klucz routujący parametrów zawartych w nagłówku
 \end{description}
 
-Topologia wykorzystywana w projekcie zakłada, że każdy węzeł może nasłuchiwać więcej niż jednej kolejki zadaniowej (jest to porządane w przypadku kiedy nie każdy węzeł jest w~stanie obsłużyć każdy typ zadania). Dodatkowo każdy węzeł tworzy własną kolejkę na zlecenia przerwania zadania i przypina ją do wspólnego wymiennika typu \lstinline{fanout}. Gwarantuje to dostarczenie każdemu węzłowi komunikatu przerwania niezależnie od awarii komunikacji z brokerem: 
+Topologia wykorzystywana w projekcie zakłada, że każdy węzeł może nasłuchiwać więcej niż jednej kolejki zadaniowej (jest to pożądane w przypadku kiedy nie każdy węzeł jest w~stanie obsłużyć każdy typ zadania). Dodatkowo każdy węzeł tworzy własną kolejkę na zlecenia przerwania zadania i przypina ją do wspólnego wymiennika typu \lstinline{fanout}. Gwarantuje to dostarczenie każdemu węzłowi komunikatu przerwania niezależnie od awarii komunikacji z brokerem. Topologia kolejkowania została przedstawiona na rysunku \ref{fig:topo}.
 
-\begin{figure}
+\begin{figure}[h]
 \resizebox{\textwidth}{!}{%
 \input{komunikacja.tikz}
 }%
 \caption{Topologia kolejkowania}
+\label{fig:topo}
 \end{figure}
 
 \section{Zarządzanie zasobami}
-Protokół AMQP operuje na zależnych od siebie zasobach, którymi należy w poprawny sposób zarządzać. Postawowy przykład z dokumentacji biblioteki AMQP w przypadku wystąpienia wyjątku nie gwarantuje zwolnienia zasobu, a kolejność wykonywania finalizatorów ze względu na leniwą ewaluację jest determinowana wyłącznie wyzwoleniem mechanizmu odśmiecania.
+Protokół AMQP operuje na zależnych od siebie zasobach, którymi należy w poprawny sposób zarządzać. Postawowy przykład z dokumentacji biblioteki AMQP (Listing \ref{lst:conn}), w przypadku wystąpienia wyjątku nie gwarantuje zwolnienia zasobu, a kolejność wykonywania finalizatorów ze względu na leniwą ewaluację jest determinowana wyłącznie wyzwoleniem mechanizmu odśmiecania.
 
-\begin{lstlisting}[caption=Łączenie z RabbitMQ]
+\begin{lstlisting}[caption=Łączenie z RabbitMQ, label=lst:conn]
 main = do
   conn <- openConnection "127.0.0.1" "/" "guest" "guest"
   ...
   closeConnection conn
 \end{lstlisting}
 
-Jednym z istniejących rozwiązań tego problemu jest biblioteka \texttt{io-region}\cite{IoReg}, umożliwiająca podział kodu na regiony odpowiedzialne za poszczególne zasoby oraz przenoszenie tych odpowiedzialności pomiędzy regionami
-\newpage
-\begin{lstlisting}[caption=Regionalizacja zasobów]
+Jednym z istniejących rozwiązań tego problemu jest biblioteka \texttt{io-region} \cite{IoReg}, umożliwiająca podział kodu na regiony odpowiedzialne za poszczególne zasoby (Listing \ref{lst:reg}) oraz przenoszenie tych odpowiedzialności pomiędzy regionami.
+\begin{lstlisting}[caption=Regionalizacja zasobów, label=lst:reg]
 ...
 region $ \r -> do
  connection <- alloc_ r (AMQP.openConnection host vhost username password)
@@ -42,8 +43,8 @@ region $ \r -> do
 ...
 \end{lstlisting}
 
-Rejestrowanie zasobów w obrębie odpowiednich regionów rozwiązuje również problem asynchronicznych wywołań zwrotnych, służących do obsługi nadchodzących komunikatów z brokera. Dla porównania, niewłaściwe rozwiązanie oparte o mechanizm \lstinline{bracket} powoduje przedwczesne zamknięcie zasobu nadal wykorzystywanego przez funkcję uruchamianą asynchronicznie.
-\begin{lstlisting}[caption=Problem funkcji asynchronicznych]
+Rejestrowanie zasobów w obrębie odpowiednich regionów rozwiązuje również problem asynchronicznych wywołań zwrotnych, służących do obsługi nadchodzących komunikatów z brokera. Dla porównania, niewłaściwe rozwiązanie oparte o mechanizm \lstinline{bracket} (przedstawione na listingu \ref{lst:brac}) powoduje przedwczesne zamknięcie zasobu nadal wykorzystywanego przez funkcję uruchamianą asynchronicznie.
+\begin{lstlisting}[caption=Problem funkcji asynchronicznych, label=lst:brac]
 ...
 bracket openConnection closeConnection $ \connection ->
   bracket (openChannel connection) closeChannel $ \channel1 ->
@@ -70,8 +71,8 @@ region $ \r -> do
 \newpage
 
 \section{Środowisko funkcji}
-Większość funkcji związanych z protokołem AMQP wymaga do działania przekazania pewnego zasobu (jak na przykład obiekt \lstinline{Connection} lub \lstinline{Channel}). Robienie tego za każdym razem explicite prowadzi do zmniejszenia czytelności kodu. Idiomatycznym dla języka Haskell rozwiązaniem jest zastosowanie typu \lstinline{Reader} \cite{Reader}: 
-\begin{lstlisting}[caption=Typ reader]
+Większość funkcji związanych z protokołem AMQP wymaga do działania przekazania pewnego zasobu (jak na przykład obiekt \lstinline{Connection} lub \lstinline{Channel}). Robienie tego za każdym razem explicite prowadzi do zmniejszenia czytelności kodu. Idiomatycznym dla języka Haskell rozwiązaniem jest zastosowanie przedstawionego na listingu \ref{lst:reader} typu \lstinline{Reader} \cite{Reader}.
+\begin{lstlisting}[caption=Typ reader, label=lst:reader]
 newtype Reader e a = Reader { runReader :: e -> a }
 
 instance Functor (Reader e) where
@@ -88,16 +89,13 @@ ask :: Reader a a
 ask = Reader id
 \end{lstlisting}
 
-Typ \text{Reader} opakowuje funkcję przyjmującą jako argument środowisko jej wykonania i zwracającej pewien wynik obliczeń wykorzystujących to środowisko. Przykładowo dla:
+Typ \lstinline{Reader} opakowuje funkcję przyjmującą jako argument środowisko jej wykonania i zwracającej pewien wynik obliczeń wykorzystujących to środowisko. Przykładowo dla:
 
 \begin{lstlisting}
 testReader :: Reader Bool String
 testReader = Reader $ \flag -> if flag then "Włącz" else "Wyłącz"
-
-runReader testReader True == "Włącz"
 \end{lstlisting}
-
-Jednak istotą działania \lstinline{Reader}'a jest jego monadyczny interfejs umożliwiający zapisanie funkcji \lstinline{testReader} jako:
+wywołanie \lstinline{runReader testReader True} zwróci wartość \lstinline{"Włącz"} -- jednak istotą działania \lstinline{Reader}'a jest jego monadyczny interfejs umożliwiający zapisanie funkcji \lstinline{testReader} jako:
 
 \begin{lstlisting}
 testReader :: Reader Bool String
@@ -108,9 +106,9 @@ testReader = do
 
 Dzięki temu unikamy przekazywania tego samego środowiska za każdym razem jako argumentu funkcji, co jest szczególnie istotne w przypadku kiedy jest to wiele funkcji.
 
-Niestety funkcjonalność samej monady \lstinline{Reader} reader nie jest wystarczająca ze względu na mnogość operacji wykorzystujących operacje wejścia-wyjścia, więc wymagających typu \lstinline{IO} do działania. Pomocne tutaj okazują się transformatory monad (ang. \textit{Monad transformers}\cite{Transformers}):
+Niestety funkcjonalność samej monady \lstinline{Reader} nie jest wystarczająca ze względu na mnogość operacji wykorzystujących operacje wejścia-wyjścia, więc wymagających typu \texttt{IO} do działania. Pomocne okazują się przedstawione na listingu \ref{lst:transformers} transformatory monad (ang.~\textit{Monad transformers} \cite{Transformers}):
 
-\begin{lstlisting}[caption=Transformator typu Reader]
+\begin{lstlisting}[caption=Transformator typu Reader, label=lst:transformers]
 newtype ReaderT e m a = ReaderT { runReaderT :: e -> m a }
 
 instance Functor m => Functor (ReaderT e m) where
@@ -147,8 +145,8 @@ Włącz
 
 \newpage
 \section{Odczyt konfiguracji z pliku}
-Biblioteka \texttt{configurator}\cite{Conf} umożliwia odczyt plików konfiguracyjnych i zapewnia uproszczony interfejs dostępu do przechowywanych wewnątrz wartości parametrów, a w przypadku ich braku korzysta z wartości domyślnej zapisanej ,,na sztywno'' w kodze konfigurowanego programu:
-\begin{lstlisting}[caption=Przykładowy plik konfiguracyjny]
+Biblioteka \texttt{configurator} \cite{Conf} umożliwia odczyt plików konfiguracyjnych i zapewnia uproszczony interfejs dostępu do przechowywanych wewnątrz wartości parametrów, a w przypadku ich braku korzysta z wartości domyślnej zapisanej ,,na sztywno'' w kodze konfigurowanego programu, co dla poniższego (\ref{lst:config}) pliku konfiguracyjnego zostało zaimplementowane na listingu~\ref{lst:configuse}.
+\begin{lstlisting}[caption=Przykładowy plik konfiguracyjny, label=lst:config]
 taskell {
   rabbitmq {
     host     = "localhost"
@@ -164,14 +162,14 @@ taskell {
 
 \begin{description}[align=right,labelwidth=10cm,leftmargin=6cm]
   \item[taskell.rabbitmq.host] Nazwa sieciowa lub adres IP brokera
-  \item[taskell.rabbitmq.vhost] URL hosta wirtualnego jeśli na fizycznej maszynie działa więcej niż jeden broker
+  \item[taskell.rabbitmq.vhost] URL hosta wirtualnego
   \item[taskell.rabbitmq.username] Nazwa użytkownika skonfigurowana na brokerze
   \item[taskell.rabbitmq.password] Hasło użytkownika skonfigurowane na brokerze
   \item[taskell.abortExchange] Nazwa wymiennika do którego każdy węzeł przypina swoją kolejkę celem nasłuchu zleceń przerwania zadana
-  \item[taskell.queues] Lista kolejek, które węzeł ma nasłuchiwać w oczekiwaniu na zadanie
+  \item[taskell.queues] Lista kolejek, których węzeł ma nasłuchiwać w oczekiwaniu na zadanie
   \item[taskell.parallelism] Liczba zadań, które węzeł może przetwarzać jednocześnie
 \end{description}
-\begin{lstlisting}[caption=Odczyt konfiguracji]
+\begin{lstlisting}[caption=Odczyt konfiguracji, label=lst:configuse]
 main = do
   [cp] <- getArgs
   config <- load [ Required cp ]
@@ -182,9 +180,9 @@ main = do
 \end{lstlisting}
 \newpage
 \section{Obsługa zadań}
-Mechanizm uruchamiania konkretnego zadania sprowadza się do odczytu odpowiedniej funkcji z tablicy mieszającej zawierającej wszystkie obsługiwane przez węzeł zadania na podstawie klucza będącego wybraną przez programistę nazwą zadania, a następnie uruchomienie (po odpowiednim sparametryzowaniu) tej funkcji wewnątrz oddzielnego wątku. Ogólny schemat wygląda następująco:
+Mechanizm uruchamiania konkretnego zadania sprowadza się do odczytu odpowiedniej funkcji z tablicy mieszającej zawierającej wszystkie obsługiwane przez węzeł zadania na podstawie klucza będącego wybraną przez programistę nazwą zadania, a następnie uruchomienie (po odpowiednim sparametryzowaniu) tej funkcji wewnątrz oddzielnego wątku. Ogólny schemat przedstawia listing~\ref{lst:obsl}.
 
-\begin{lstlisting}[caption=Schemat obsługi zadania]
+\begin{lstlisting}[caption=Schemat obsługi zadania, label=lst:obsl]
 newtype Task = Task { runTask :: ByteString -> IO ByteString }
 
 registeredTasks :: HashMap Text Task
@@ -205,9 +203,9 @@ handleTask (msg, env) = do
 \end{lstlisting}
 Nieprzypadkowo typ \lstinline{Task} to opakowana, monomorficzna funkcja przetwarzająca ciągi bajtów. Gdyby pokusić się o przeniesienie odpowiedzialności za deserializację argumentów i serializację wyników obliczeń, typ ten przyjąłby pozornie ,,bezpieczniejszą'' formę egzystencjalną:
 {\large $$\forall_{a, b} (\mathrm{Serializable}\ a, \mathrm{Serializable}\ b) \Rightarrow a \rightarrow b$$}%
-jednak w takiej sytuacji kompilator nie może ustalić typów polimorficznych $a$, $b$ w kontekście fragmentu kodu obliczającego wartość:
+jednak w takiej sytuacji kompilator nie może ustalić typów polimorficznych $a$, $b$ w kontekście fragmentu kodu obliczającego wartość, co zostało zobrazowane na listingu~\ref{lst:ambig}
 \newpage
-\begin{lstlisting}[caption=Problem typu zadania zdefiniowanego egzystencjalnie]
+\begin{lstlisting}[caption=Problem typu zadania zdefiniowanego egzystencjalnie, label=lst:ambig]
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes                #-}
 module Test where
@@ -232,15 +230,16 @@ runTaskByName taskName encodedArg = do
   
 \end{lstlisting}
 
-Błąd ten jest analogiczny do przedstawionego poniżej bardziej podstawowego przykładu i wychwytuje go mechanizm sprawdzania jednoznaczności instancjonowanych typów:
-\begin{lstlisting}
+Błąd ten jest analogiczny do przedstawionego na listingu~\ref{lst:basic} bardziej podstawowego przykładu i wychwytuje go mechanizm sprawdzania jednoznaczności instancjonowanych typów.
+\begin{lstlisting}[caption=Podstawowy przykład niejednoznaczności typów, label=lst:basic]
 show (read "5" :: Int)         => "5"
 show (read "5" :: Double)      => "5.0"
 show (read "5") => Ambiguous type variable `a2' arising from a use of `read'
                    prevents the constraint `(Read a2)' from being solved.
 \end{lstlisting}
 
-Inferencja typu dla trzeciego wyrażenia przebiega w systemie Hindleya-Milnera\cite{HM} rozszerzonym o klasy typów\cite{TC} następująco:
+Inferencja typu dla trzeciego wyrażenia przebiega w systemie Hindleya-Milnera \cite{HM} rozszerzonym o klasy typów \cite{TC} następująco: Najpierw zostają wprowadzone (reguła \texttt{Var}) potrzebne wartości. Po zastosowaniu reguły eliminacji aplikacji funkcji (\texttt{App}) powstaje kwantyfikowany egzystencjalnie element ograniczony klasą \texttt{Read}, który można zaaplikować (z użyciem reguły eliminacji aplikacji funkcji z łączeniem kontekstów \texttt{Comb}) jako argument funkcji \texttt{show}, co prowadzi do wynikowego typu \texttt{String}, jednak kwantyfikowanego kontekstem odnoszącym się do zmiennej $\alpha$ niewystępującej poza nim, co nie jest dozwolone zgodnie z regułą jednoznaczności typów opisaną w \cite{Report}). Diagram inferencji przedstawia rysunek~\ref{fig:infer}
+
 \begin{figure}[h]
 \scriptsize 
 \begin{mdframed}
@@ -265,14 +264,14 @@ Inferencja typu dla trzeciego wyrażenia przebiega w systemie Hindleya-Milnera\c
 \end{prooftree}
 \end{mdframed}
 \caption{Inferencja niejednoznacznego typu}
+\label{fig:infer}
 \end{figure}
 
-Wynikowy typ zawiera restrykcje odnoszące się do zmiennej $\alpha$ niewystępującej poza kontekstem, więc wyrażenie takie nie posiada prawidłowego typu\cite{Report}.
-
 \section{Raportowanie postępów wykonania}
-Każde zadanie oprócz zwracania rezultatu może również raportować na bieżąco postęp wykonywanych operacji. Skuteczną metodą obsługi tego mechanizmu są współprogramy (ang. \textit{coroutines}). Biblioteka \texttt{monad-coroutine}\cite{Coroutine} dostarcza spójny i idiomatyczny interfejs pozwalający na zaimplementowanie tej funkcjonalności:
+\label{sec:rap}
+Każde zadanie oprócz zwracania rezultatu może również raportować na bieżąco postęp wykonywanych operacji. Skuteczną metodą obsługi tego mechanizmu są współprogramy (ang. \textit{coroutines}). Biblioteka \texttt{monad-coroutine} \cite{Coroutine} dostarcza spójny i idiomatyczny interfejs pozwalający na zaimplementowanie tej funkcjonalności, co przedstawia listing \ref{lst:impl}.
 
-\begin{lstlisting}[caption=Ostateczna implementacja zadania]
+\begin{lstlisting}[caption=Ostateczna implementacja zadania, label=lst:impl]
 newtype Task arg p r = Task { runTask :: arg -> Coroutine (Yield p) IO r }
   
 instance Functor (Task arg p) where
@@ -300,7 +299,7 @@ runTaskByName ts key arg reportFn = liftIO $ do
 progress :: Monad m => p -> Coroutine (Yield p) m ()
 progress = yield
 \end{lstlisting}
-
+\newpage
 Przykładowe zadanie sumujące liczby i raportujące postęp po przetworzeniu każdego elementu listy wygląda wtedy następująco:
 \begin{lstlisting}
 summationTask :: Task [Int] Int Int
@@ -314,20 +313,24 @@ summationTask = Task $ \numbers ->
 \end{lstlisting}
 
 \section{Schemat komunikacji z brokerem}
-Zadania są definiowane przez użytkownika, a więc rozsądnym wydaje się odizolowanie wykonywanego kodu w oddzielnym wątku, tak aby ograniczyć opóźnienia komunikacyjne. Poniższy diagram sekwencji obrazuje proces zachodzący podczas wykonywania przykładowego zadania, przy założeniu, że całość komunikacji odbywa się poprzez transakcyjne zmienne synchronizacyjne\cite{Stm}:
+Zadania są definiowane przez użytkownika, a więc rozsądnym wydaje się odizolowanie wykonywanego kodu w oddzielnym wątku, tak aby ograniczyć opóźnienia komunikacyjne. Poniższy diagram sekwencji obrazuje proces zachodzący podczas wykonywania przykładowego zadania, przy założeniu, że całość komunikacji odbywa się poprzez transakcyjne zmienne synchronizacyjne \cite{Stm} co zostało przedstawione na diagramie~\ref{fig:seq}.
 
 \begin{figure}[h]
-\includegraphics[width=\textwidth]{sekwencja}
-\caption{Diagram sekwencji wynonywania zadania}
+  \begin{center}
+  \includegraphics[width=0.8\textwidth]{sekwencja}
+  \end{center}
+\caption{Diagram sekwencji wykonywania zadania}
+\label{fig:seq}
 \end{figure}
-
-Kiedy postępy są zapisywane w zmiennej transakcyjnej, wykonanie wątku jest przerywane tylko na czas tego konkretnego zapisu, a przesył postępów odbywa się w innym wątku. Takie podejście minimalizuje przestoje, przy założeniu, że wysyłanie oczekujących komunikatów odbywa się szybciej niż produkcja nowych (W przeciwnym wypadku następuje blokowanie przy próbie zapisu do zmiennej, z której inny wątek nie zdążył jeszcze pobrać wartości). Obsługa przesyłania rezultatu zadania jest identyczna z obsługą postępów, co w przyszłości umożliwia zaimplementowanie zadań produkujących więcej niż jeden wynik. 
+\newpage
+Kiedy postępy są zapisywane w zmiennej transakcyjnej, wykonanie wątku jest przerywane tylko na czas tego konkretnego zapisu, a przesył postępów odbywa się w innym wątku. Takie podejście minimalizuje przestoje, przy założeniu, że wysyłanie oczekujących komunikatów odbywa się szybciej niż produkcja nowych. W przeciwnym wypadku następuje blokowanie przy próbie zapisu do zmiennej, z której inny wątek nie zdążył jeszcze pobrać wartości. Obsługa przesyłania rezultatu zadania jest identyczna z obsługą postępów, co w przyszłości umożliwia zaimplementowanie zadań produkujących więcej niż jeden wynik. 
 
 Zatwierdzenie odebrania zadania odbywa się dopiero po odesłaniu wyniku, co pozwala na wykorzystanie wbudowanego w RabbitMQ mechanizmu automatycznego ponownego kolejkowania niedokończonych zadań, na wypadek np. fizycznej awarii węzła.
 
 \section{Przerywanie zadań}
-Przerywanie zadań jest obsługiwane poprzez zapamiętanie identyfikatora wątku zadania w transakcyjnej mapie\cite{STMMap}, gdzie kluczami są identyfikatory aktualnie wykonywanych zadań, a wartościami identyfikatory wątku obsługującego zadanie. Komunikat przerprawania zadania zawiera identyfikator zadania, które ma zostać przerwane, co umożliwia przerwanie odpowiedniego wątku:
-\begin{lstlisting}
+\label{sec:przer}
+Przerywanie zadań jest obsługiwane poprzez zapamiętanie identyfikatora wątku zadania w transakcyjnej mapie \cite{STMMap}, gdzie kluczami są identyfikatory aktualnie wykonywanych zadań, a wartościami identyfikatory wątku obsługującego zadanie. Komunikat przerwania zadania zawiera identyfikator zadania, które ma zostać przerwane, co umożliwia przerwanie odpowiedniego wątku. Przykładową implementację zawiera listing~\ref{lst:abort}
+\begin{lstlisting}[caption=Przerywanie zadań, label=lst:abort]
 type CurrentTasks = STM.Map UUID ThreadId
 
 abortHandler :: CurrentTasks -> ReaderT (Env (Message, Envelope)) IO ()
@@ -381,9 +384,11 @@ onResult = onSuffix ".result"
 
 \end{lstlisting}
 
-Uruchomienie zadania polega na umieszczeniu na wybranej przez użytkownika kolejce komunikatu zlecającego zadanie, którego nasłuchują węzły. Kiedy węzeł odeśle postęp, lub rezultat, możliwe jest zlecenie kolejnego zadania, w szczególności wykorzystującego rezultat poprzedniego jako swój argument. Dzięki niskopoziomowemu interfejsowi możemy wykorzystywać wiele różnych strategii serializacji i deserializacji przesyłanych danych oraz eliminować ich izomorficzne przekształcenia (niepotrzebne transformacje danych będących w odpowiednich formatach). Kosztem takiego rozwiązania jest brak bezpieczeństwa typów.
+Uruchomienie zadania polega na umieszczeniu na wybranej przez użytkownika kolejce komunikatu zlecającego zadanie, którego nasłuchują węzły. Kiedy węzeł odeśle postęp lub rezultat, możliwe jest zlecenie kolejnego zadania, w szczególności wykorzystującego rezultat poprzedniego jako swój argument. Dzięki niskopoziomowemu interfejsowi możemy wykorzystywać wiele różnych strategii serializacji i deserializacji przesyłanych danych oraz eliminować ich izomorficzne przekształcenia (niepotrzebne transformacje danych będących w odpowiednich formatach). Kosztem takiego rozwiązania jest brak bezpieczeństwa typów.
+
+Przykład uruchamiający zadanie, wykorzystujący do serializacji bibliotekę \texttt{store} został zawarty na listingu~\ref{lst:example}
 \newpage
-\begin{lstlisting}
+\begin{lstlisting}[caption=Uruchamianie zadania, label=lst:example]
 {-# LANGUAGE ViewPatterns #-}
 
 deserialize :: Store a => BL.ByteString -> a

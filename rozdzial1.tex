@@ -1,31 +1,40 @@
 % !TEX root = praca.tex
 
 \chapter{Wprowadzenie}
-\label{cha:wprowadzenie}
-W czasach kiedy przewidywania Gordona Moore'a dotyczące dalszego wzrostu mocy obliczeniowej pojedynczych komputerów przestają się sprawdzać, coraz częściej wykorzystujemy metody wykonywania programów oparte na jednoczesnym przetwarzaniu rozproszonym na wielu połączonych ze sobą maszynach. 
+W czasach kiedy przewidywania Gordona Moore'a dotyczące dalszego wzrostu mocy obliczeniowej pojedynczych komputerów przestają się sprawdzać, coraz częściej wykorzystujemy metody wykonywania programów oparte na jednoczesnym przetwarzaniu rozproszonym na wielu połączonych ze sobą maszynach. Pomimo pozornej prostoty takiego rozwiązania istnieje bardzo niewiele narzędzi ułatwiających programowanie w modelu rozproszonym.
 
-Pomimo pozornej prostoty takiego rozwiązania istnieje bardzo niewiele narzędzi ułatwiających programowanie w modelu rozproszonym.
-
-%---------------------------------------------------------------------------
 \section{Cel i założenia pracy}
-\label{sec:celePracy}
-Celem poniższej pracy jest implementacja w języku Haskell podstawowej biblioteki do rozpraszania zadań na wielu komputerach z wykorzystaniem brokera RabbitMQ, umożliwiającą zlecanie zadań do wykonania, przerywanie zadań będących w trakcie wykonywania, raportowanie na bieżąco postępów wykonania, przesyłania wyników oraz wprowadzania zależności pomiędzy zadaniami.
+Celem poniższej pracy jest implementacja w języku Haskell podstawowej biblioteki do rozpraszania zadań na wielu komputerach z wykorzystaniem brokera RabbitMQ, umożliwiającej zlecanie zadań do wykonania, przerywanie zadań będących w trakcie wykonywania, raportowanie na bieżąco postępów wykonania, przesyłania wyników oraz wprowadzania zależności pomiędzy zadaniami.
 
+\section{Zawartość pracy}
+W rozdziale \ref{chap:exist} zostały opisane istniejące rozwiązania, zaimplementowane w innych językach programowania.
+
+Rozdział \ref{chap:impl} opisuje najważniejsze aspekty implementacyjne biblioteki rozpraszającej zadania w języku Haskell.
+
+Podsumowanie zawarte w rozdziale \ref{chap:pods} zawiera ogólne wnioski, zakres zrealizowanych celów pracy oraz opis funkcjonalności, o które można rozbudować w przyszłości zaimplementowaną wcześniej bibliotekę.
 %---------------------------------------------------------------------------
-\section{Istniejące rozwiązania}
-\label{sec:celePracy}
-Poniższa lista zawiera skrócony opis istniejących bibliotek programistycznych, służących do obliczeń rozproszonych:
-\subsection{Celery}
-\label{ssec:celery}
+\chapter{Istniejące rozwiązania}
+\label{chap:exist}
+
+Poniższa lista zawiera skrócony opis niektórych bibliotek programistycznych, służących do obliczeń rozproszonych:
+\section{Celery}
 \textbf{Celery} jest asynchroniczną kolejką zadań opartą o rozproszone komunikaty przesyłane między komputerami, napisaną w języku Python. Działa w czasie rzeczywistym, jednak umożliwia również szeregowanie zadań. Interfejs programistyczny pozwala na zlecanie zadań zarówno w sposób synchroniczny jak i asynchroniczny, oraz przesyłanie wyników. Wspiera wiele brokerów wiadomości (np. RabbitMQ, Redis, MongoDB). 
 
-\subsection{Resque}
-\label{ssec:resque}
+Architektura składa się z biblioteki klienckiej oraz modułu uruchamiającego zadania. Kod zadań jest definiowany w oddzielnym module. Zadania są uruchamiane wsadowo (nie jest możliwa komunikacja z zadaniem po jego uruchomieniu).
+
+Rozbudowane API pozwala na kompozycję wykonywanych zadań, tworzenie złożonych topologii, uruchamianie zadań okresowych oraz zaawansowane monitorowanie oraz zarządzanie zadaniami. Monitorowanie postępów jest możliwe za pomocą rozszerzeń.
+
+\section{Resque}
 \textbf{Resque} jest biblioteką języka Ruby, wykorzystującą bazę Redis w charakterze brokera wiadomości. Umożliwia asynchroniczne zlecanie powtarzalnych zadań na innych komputerach. Biblioteka ta jest często używana przez programistów serwisów internetowych do wykonywania długotrwałych operacji (np. generowanie miniaturek zdjęć, rozsyłanie newslettera e-mail, tworzenie raportów, etc...) 
 
-\subsection{Cloud Haskell}
-\label{ssec:cloudHs}
-\textbf{Cloud Haskell} to biblioteka języka Haskell, udostępniająca warstwę transportową do komunikacji między węzłami, mechanizm serializacji domknięć pozwalający na zdalne uruchamianie procesów oraz API do programowania rozproszonego.
+Ta biblioteka nie posiada rozbudowanego API i obsługuje jedynie najprostszą możliwość uruchamiania kodu na innym komputerze. Posiada jednak wbudowany panel webowy, umożliwiający proste nadzorowanie zadań w toku oraz węzłów połączonych z brokerem. 
+\newpage
+\section{Cloud Haskell}
+\textbf{Cloud Haskell} to biblioteka języka Haskell, udostępniająca warstwę transportową do komunikacji między węzłami (a więc nie wymaga brokera), mechanizm serializacji domknięć pozwalający na zdalne uruchamianie funkcji zdefiniowanych w kodzie, oraz API do programowania rozproszonego wymodelowane w sposób zbliżony do OTP [\ref{sec:otp}]. Biblioteka nie jest skupiona wokół koncepcji zadań, przez co jest zdecydowanie bardziej ogólna od pozostałych rozwiązań.
+
+\section{Open Telecom Platform}
+\label{sec:otp}
+\textbf{OTP} to kolekcja narzędzi zawierających maszynę wirtualną języka Erlang (uruchamianą na wszystkich węzłach), protokół komunikacyjny, brokera CORBA\footnote{Common Object Request Broker Architecture - standard komunikacyjny, umożliwiający rozproszony dostęp do obiektów znajdujących się na innych węzłach}, narzędzia do statycznej analizy rozproszonego kodu, rozproszony serwer bazodanowy oraz wiele innych bibliotek. Umożliwia zaimplementowanie zadań, wraz ze wszystkimi dodatkowymi funkcjonalnościami jednak jest znacznie bardziej ogólna i sama nie dostarcza abstrakcji służących do tego celu.
 %---------------------------------------------------------------------------
 
 
